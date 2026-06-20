@@ -1,3 +1,4 @@
+import subprocess
 import psutil
 
 def get_network_interfaces():
@@ -94,6 +95,35 @@ def get_dns_servers():
         pass
 
     return dns_servers
+
+def get_routing_table():
+    """
+    Returns the system's routing table — which gateway/interface
+    traffic is sent through for different destinations. Useful for
+    detecting manually added or unexpected routes, which can indicate
+    traffic interception or tampering.
+    """
+    routes = []
+
+    try:
+        result = subprocess.run(
+            ["ip", "route"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            routes.append(line.strip())
+
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    return routes
+
+
 if __name__ == "__main__":
     print("Network Interfaces:")
     for iface in get_network_interfaces():
@@ -106,3 +136,7 @@ if __name__ == "__main__":
         print(conn)
 
     print("\nDNS Servers:", get_dns_servers())
+
+    print("\nRouting Table:")
+    for route in get_routing_table():
+        print(route)
