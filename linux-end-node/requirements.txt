@@ -5,4 +5,5 @@ psutil==7.2.2
 python-dotenv==1.2.2
 PyYAML==6.0.3
 requests==2.34.2
+schedule==1.2.2
 urllib3==2.7.0
