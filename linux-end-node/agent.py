@@ -2,6 +2,7 @@ import time
 import sys
 import schedule
 
+from registration.register import is_registered, load_credentials, register_node
 from collectors.system_profile import collector as system_profile
 from collectors.resource_usage import collector as resource_usage
 from collectors.process import collector as process
@@ -118,13 +119,27 @@ def run_thirty_minute_collection():
 def main():
     print("Argus Linux end node agent starting up...", flush=True)
 
+    if not is_registered():
+        print("Node not yet registered. Attempting registration...", flush=True)
+
+        machine_id = system_profile.get_machine_id()
+        hostname = system_profile.get_hostname()
+
+        success = register_node(machine_id, hostname)
+
+        if not success:
+            print("Registration failed. Agent cannot continue without valid credentials. Exiting.", flush=True)
+            sys.exit(1)
+
+    credentials = load_credentials()
+    print(f"Operating as node_id={credentials['node_id']}", flush=True)
+
     run_startup_collection()
 
     schedule.every(1).minutes.do(run_one_minute_collection)
     schedule.every(5).minutes.do(run_five_minute_collection)
     schedule.every(30).minutes.do(run_thirty_minute_collection)
     schedule.every().day.at("03:00").do(run_daily_collection)
-
     schedule.every(2).minutes.do(retry_queued_sends)
 
     print("Scheduler configured. Entering main loop.", flush=True)
@@ -132,7 +147,6 @@ def main():
     while True:
         schedule.run_pending()
         time.sleep(1)
-
 
 if __name__ == "__main__":
     try:
