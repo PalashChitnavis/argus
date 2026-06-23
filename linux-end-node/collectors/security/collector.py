@@ -149,9 +149,66 @@ def get_mac_status():
             "mac_tool": None,
             "mac_enabled": None,
         }
+
+def get_firewall_rules():
+    """
+    Returns the current UFW firewall rules as a list of dicts.
+    Each rule has a number (used to delete it later), the action
+    (ALLOW/DENY), direction (IN/OUT), and the target (port/protocol
+    or IP). Requires root to run.
+    """
+    try:
+        result = subprocess.run(
+            ["ufw", "status", "numbered"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    rules = []
+
+    for line in result.stdout.splitlines():
+        line = line.strip()
+
+        # Lines with actual rules look like:
+        # [ 1] 22/tcp                     ALLOW IN    Anywhere
+        # [ 2] 80/tcp                     DENY IN     Anywhere
+        if not line.startswith("["):
+            continue
+
+        try:
+            # Extract the rule number from brackets
+            bracket_end = line.index("]")
+            rule_number = int(line[1:bracket_end].strip())
+
+            # Everything after the bracket is the rule body
+            rule_body = line[bracket_end + 1:].strip()
+            parts = rule_body.split()
+
+            # parts[0] = target (e.g. 22/tcp, 192.168.1.0/24)
+            # parts[1] = action (ALLOW, DENY, REJECT, LIMIT)
+            # parts[2] = direction (IN, OUT) -- sometimes absent
+            target = parts[0]
+            action = parts[1] if len(parts) > 1 else ""
+            direction = parts[2] if len(parts) > 2 else ""
+
+            rules.append({
+                "rule_number": rule_number,
+                "target": target,
+                "action": action,
+                "direction": direction,
+            })
+        except (ValueError, IndexError):
+            # Malformed line — skip it
+            continue
+
+    return rules
     
 if __name__ == "__main__":
     print("Firewall Status:", get_firewall_status())
-    print("Disk Encryption Status:", get_disk_encryption_status())
-    print("SSH Config Status:", get_ssh_config_status())
+    print("Disk Encryption:", get_disk_encryption_status())
+    print("SSH Config:", get_ssh_config_status())
     print("MAC Status:", get_mac_status())
+    print("Firewall Rules:", get_firewall_rules())

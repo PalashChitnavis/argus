@@ -4,3 +4,4 @@ __pycache__/
 *.py[cod]
 queue/
 credentials.json
+scheduled_rules.json
