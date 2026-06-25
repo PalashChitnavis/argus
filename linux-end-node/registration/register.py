@@ -8,7 +8,8 @@ load_dotenv()
 SERVER_URL = os.getenv("ARGUS_SERVER_URL")
 ENROLLMENT_TOKEN = os.getenv("ARGUS_ENROLLMENT_TOKEN")
 
-CREDENTIALS_FILE = "credentials.json"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CREDENTIALS_FILE = os.path.join(BASE_DIR, "credentials.json")
 
 
 def is_registered():

@@ -4,22 +4,22 @@ import subprocess
 
 def get_running_processes():
     """
-    Returns a snapshot of all currently running processes with the
-    fields needed for rule enforcement and ML baselining. Skips
-    processes that disappear or are inaccessible mid-scan (normal
-    behavior — processes start/stop constantly).
+    Returns a snapshot of all currently running processes.
+    Now includes runtime_seconds — how long each process has been
+    running — calculated from create_time vs current time.
     """
     processes = []
+    now = time.time()
 
-    # psutil.process_iter lets us request specific fields up front,
-    # which is more efficient than creating a Process object per PID
-    # and querying each field separately.
     for proc in psutil.process_iter([
         "pid", "name", "username", "cmdline",
         "status", "create_time"
     ]):
         try:
-            info = proc.info  # the fields we requested above, as a dict
+            info = proc.info
+
+            create_time = info["create_time"]
+            runtime_seconds = int(now - create_time) if create_time else None
 
             processes.append({
                 "pid": info["pid"],
@@ -27,14 +27,12 @@ def get_running_processes():
                 "username": info["username"],
                 "cmdline": " ".join(info["cmdline"]) if info["cmdline"] else "",
                 "status": info["status"],
-                "create_time": info["create_time"],
+                "create_time": create_time,
+                "runtime_seconds": runtime_seconds,
                 "cpu_percent": proc.cpu_percent(interval=None),
                 "memory_percent": round(proc.memory_percent(), 2),
             })
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            # The process ended, or we don't have permission to read it,
-            # or it's a zombie with incomplete info. Skip it and move on
-            # rather than crashing the whole collection.
             continue
 
     return processes
@@ -100,7 +98,52 @@ def get_process_tree_info():
 
     return tree_info
 
+def get_per_app_connections():
+    """
+    Aggregates active network connections by process name, giving
+    a count of how many connections each app currently has open.
+    This is our proxy for "which app is using the network most"
+    since Linux doesn't expose per-process bytes natively without
+    packet capture tools.
+
+    Returns a list of dicts sorted by connection count descending
+    so the most network-active apps appear first.
+    """
+    import psutil
+    from collections import defaultdict
+
+    connection_counts = defaultdict(int)
+    connection_details = defaultdict(set)
+
+    for conn in psutil.net_connections(kind="inet"):
+        if conn.pid is None:
+            continue
+        try:
+            proc_name = psutil.Process(conn.pid).name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+        connection_counts[proc_name] += 1
+
+        # Track unique remote IPs this app is talking to
+        if conn.raddr:
+            connection_details[proc_name].add(conn.raddr.ip)
+
+    result = []
+    for app_name, count in connection_counts.items():
+        result.append({
+            "app_name": app_name,
+            "connection_count": count,
+            "unique_remote_ips": len(connection_details[app_name]),
+        })
+
+    # Sort by connection count, most active first
+    result.sort(key=lambda x: x["connection_count"], reverse=True)
+    return result
+
 if __name__ == "__main__":
+    import time
+
     print("Taking first snapshot...")
     snapshot_1 = get_running_processes()
 
@@ -120,3 +163,12 @@ if __name__ == "__main__":
     tree = get_process_tree_info()
     for entry in tree[:5]:
         print(entry)
+
+    print("\nPer-app connection counts:")
+    app_conns = get_per_app_connections()
+    for entry in app_conns[:10]:
+        print(entry)
+
+    print("\nSample process with runtime:")
+    if snapshot_2:
+        print(snapshot_2[0])
