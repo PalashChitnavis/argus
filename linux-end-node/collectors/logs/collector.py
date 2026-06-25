@@ -393,6 +393,180 @@ def _is_meaningful_domain(domain):
 
     return True
 
+def get_recently_visited_sites(limit=50):
+    """
+    Returns the most recently visited sites across all supported
+    browsers, sorted by visit time descending (most recent first).
+    Each entry includes the full URL, page title, domain, when it
+    was visited (Unix timestamp), and which browser recorded it.
+
+    Does NOT include incognito/private browsing — browsers
+    deliberately never write private sessions to the History
+    database. This is by design at the browser level, not a
+    limitation of this collector.
+    """
+    home_dirs = _find_home_directories()
+    all_entries = []
+
+    for home in home_dirs:
+        # --- Chromium-based browsers ---
+        chromium_paths = {
+            "chrome":   os.path.join(home, ".config/google-chrome/Default/History"),
+            "brave":    os.path.join(home, ".config/BraveSoftware/Brave-Browser/Default/History"),
+            "edge":     os.path.join(home, ".config/microsoft-edge/Default/History"),
+            "chromium": os.path.join(home, ".config/chromium/Default/History"),
+        }
+
+        for browser_name, db_path in chromium_paths.items():
+            entries = _read_chromium_recent(db_path, limit)
+            for entry in entries:
+                entry["browser"] = browser_name
+            all_entries.extend(entries)
+
+        # --- Firefox ---
+        firefox_patterns = [
+            os.path.join(home, ".mozilla/firefox/*.default-release/places.sqlite"),
+            os.path.join(home, ".mozilla/firefox/*.default/places.sqlite"),
+        ]
+        for pattern in firefox_patterns:
+            for db_path in glob.glob(pattern):
+                entries = _read_firefox_recent(db_path, limit)
+                for entry in entries:
+                    entry["browser"] = "firefox"
+                all_entries.extend(entries)
+
+    if not all_entries:
+        return []
+
+    # Sort all entries across all browsers by visit time, most recent first
+    all_entries.sort(
+        key=lambda x: x["last_visit_time"] or 0,
+        reverse=True
+    )
+
+    return all_entries[:limit]
+
+
+def _read_chromium_recent(db_path, limit=50):
+    """
+    Reads recent visits from a Chromium-based browser's History DB,
+    joining the urls and visits tables to get one row per actual
+    visit event (not just per URL) — so if you visited github.com
+    10 times today, you get 10 entries with distinct timestamps,
+    not one entry.
+
+    visits.visit_time is Chrome's timestamp format (microseconds
+    since Jan 1, 1601) — we convert to Unix timestamp.
+    """
+    if not os.path.exists(db_path):
+        return []
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    tmp.close()
+
+    try:
+        shutil.copy2(db_path, tmp.name)
+        conn = sqlite3.connect(tmp.name)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Join urls + visits to get individual visit events with
+        # timestamps. visits table has one row per actual page load,
+        # urls table has the URL string and title.
+        cursor.execute("""
+            SELECT
+                u.url,
+                u.title,
+                v.visit_time
+            FROM visits v
+            JOIN urls u ON v.url = u.id
+            ORDER BY v.visit_time DESC
+            LIMIT ?
+        """, (limit,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        results = []
+        for row in rows:
+            domain = _extract_domain(row["url"])
+            if not domain or not _is_meaningful_domain(domain):
+                continue
+
+            visit_time = _convert_chrome_time(row["visit_time"])
+
+            results.append({
+                "url": row["url"],
+                "title": row["title"] or "",
+                "domain": domain,
+                "last_visit_time": visit_time,
+            })
+
+        return results
+
+    except sqlite3.Error:
+        return []
+    finally:
+        os.unlink(tmp.name)
+
+
+def _read_firefox_recent(db_path, limit=50):
+    """
+    Reads recent visits from Firefox's places.sqlite, joining
+    moz_places (URL/title) with moz_historyvisits (individual
+    visit timestamps).
+
+    visit_date is microseconds since Unix epoch.
+    """
+    if not os.path.exists(db_path):
+        return []
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    tmp.close()
+
+    try:
+        shutil.copy2(db_path, tmp.name)
+        conn = sqlite3.connect(tmp.name)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                p.url,
+                p.title,
+                h.visit_date
+            FROM moz_historyvisits h
+            JOIN moz_places p ON h.place_id = p.id
+            WHERE p.hidden = 0
+            ORDER BY h.visit_date DESC
+            LIMIT ?
+        """, (limit,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        results = []
+        for row in rows:
+            domain = _extract_domain(row["url"])
+            if not domain or not _is_meaningful_domain(domain):
+                continue
+
+            visit_time = _convert_firefox_time(row["visit_date"])
+
+            results.append({
+                "url": row["url"],
+                "title": row["title"] or "",
+                "domain": domain,
+                "last_visit_time": visit_time,
+            })
+
+        return results
+
+    except sqlite3.Error:
+        return []
+    finally:
+        os.unlink(tmp.name)
+
 
 if __name__ == "__main__":
     logs = get_recent_logs(minutes_back=5)
@@ -406,10 +580,20 @@ if __name__ == "__main__":
     for event in auth_events:
         print(event)
 
-    print("\nMost visited domains (browser history):")
-    history = get_browser_history(limit=20)
-    if history:
-        for entry in history:
-            print(entry)
-    else:
-        print("No browser history found.")
+    print("\nMost visited domains (all time, by frequency):")
+    history = get_browser_history(limit=10)
+    for entry in history:
+        print(entry)
+
+    print("\nRecently visited sites (by time, most recent first):")
+    recent = get_recently_visited_sites(limit=10)
+    for entry in recent:
+        # Convert Unix timestamp to readable format for the test
+        import datetime
+        if entry["last_visit_time"]:
+            readable = datetime.datetime.fromtimestamp(
+                entry["last_visit_time"]
+            ).strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            readable = "unknown"
+        print(f"{readable} | {entry['domain']} | {entry['title'][:50]} | {entry['browser']}")
