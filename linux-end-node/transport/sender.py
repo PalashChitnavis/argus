@@ -9,8 +9,19 @@ load_dotenv()
 SERVER_URL = os.getenv("ARGUS_SERVER_URL")
 API_KEY = os.getenv("ARGUS_API_KEY")
 
-QUEUE_DIR = "queue"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+QUEUE_DIR = os.path.join(BASE_DIR, "queue")
 
+def _get_api_key():
+    """
+    Returns the node's real API key from credentials.json,
+    falling back to the .env placeholder if not registered yet.
+    """
+    try:
+        with open("credentials.json", "r") as f:
+            return json.load(f)["api_key"]
+    except (FileNotFoundError, KeyError):
+        return API_KEY
 
 def _ensure_queue_dir():
     """Creates the local queue folder if it doesn't already exist."""
@@ -49,8 +60,8 @@ def send_data(endpoint, payload):
     url = f"{SERVER_URL}/{endpoint}"
 
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
+    "Authorization": f"Bearer {_get_api_key()}",
+    "Content-Type": "application/json",
     }
 
     try:
@@ -99,8 +110,9 @@ def retry_queued_sends():
         payload = queued_item["payload"]
 
         url = f"{SERVER_URL}/{endpoint}"
+        
         headers = {
-            "Authorization": f"Bearer {API_KEY}",
+    "       Authorization": f"Bearer {_get_api_key()}",
             "Content-Type": "application/json",
         }
 
