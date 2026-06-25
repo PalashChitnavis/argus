@@ -86,7 +86,11 @@ def unblock_user_network(username, port=None, protocol="tcp"):
 
 def list_user_blocks():
     """
-    Lists all argus-managed OUTPUT DROP rules currently in iptables.
+    Returns all argus-managed OUTPUT DROP rules currently in
+    iptables as structured dicts, not raw strings. Each dict has
+    the line number (for deletion), target (protocol/port), and
+    source — making it directly usable by the frontend without
+    any further parsing.
     """
     try:
         result = subprocess.run(
@@ -95,14 +99,71 @@ def list_user_blocks():
             text=True,
             check=True,
         )
-        # Filter to just DROP rules — those are ours
-        rules = []
-        for line in result.stdout.splitlines():
-            if "DROP" in line:
-                rules.append(line.strip())
-        return rules
     except subprocess.CalledProcessError:
         return []
+
+    rules = []
+
+    for line in result.stdout.splitlines():
+        if "DROP" not in line:
+            continue
+
+        parts = line.split()
+
+        # iptables -L --line-numbers output columns:
+        # num  target  prot  opt  source  destination  [extras]
+        # e.g: 1  DROP  tcp  --  0.0.0.0/0  0.0.0.0/0  owner UID match 1000 tcp dpt:443
+        if len(parts) < 6:
+            continue
+
+        try:
+            rule_dict = {
+                "line_number": int(parts[0]),
+                "target": parts[1],       # DROP
+                "protocol": parts[2],     # tcp/udp/all
+                "source": parts[4],       # source IP (0.0.0.0/0 = any)
+                "destination": parts[5],  # dest IP
+                "uid": None,
+                "port": None,
+            }
+
+            # Parse the extras at the end of the line for UID and port
+            # They look like: "owner UID match 1000 tcp dpt:443"
+            rest = " ".join(parts[6:])
+
+            # Extract UID
+            if "UID match" in rest:
+                uid_index = parts.index("match") if "match" in parts else None
+                for i, part in enumerate(parts):
+                    if part == "match" and i + 1 < len(parts):
+                        try:
+                            rule_dict["uid"] = int(parts[i + 1])
+                        except ValueError:
+                            pass
+
+            # Extract destination port (dpt:443)
+            for part in parts:
+                if part.startswith("dpt:"):
+                    try:
+                        rule_dict["port"] = int(part.split(":")[1])
+                    except (ValueError, IndexError):
+                        pass
+
+            # Resolve UID back to username for readability
+            if rule_dict["uid"] is not None:
+                try:
+                    rule_dict["username"] = pwd.getpwuid(rule_dict["uid"]).pw_name
+                except KeyError:
+                    rule_dict["username"] = str(rule_dict["uid"])
+            else:
+                rule_dict["username"] = None
+
+            rules.append(rule_dict)
+
+        except (ValueError, IndexError):
+            continue
+
+    return rules
 
 
 if __name__ == "__main__":

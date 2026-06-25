@@ -220,6 +220,9 @@ def _handle_delete_rule(payload):
             port=payload.get("port"),
         )
 
+    elif rule_type == "scheduled_rule":
+        return scheduler.delete_scheduled_rule(payload["index"])
+
     return {"success": False, "error": f"Unknown rule_type for delete: {rule_type}"}
 
 

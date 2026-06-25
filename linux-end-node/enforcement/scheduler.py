@@ -5,7 +5,8 @@ import threading
 
 from enforcement import firewall, hosts, bandwidth, iptables
 
-SCHEDULED_RULES_FILE = "scheduled_rules.json"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCHEDULED_RULES_FILE = os.path.join(BASE_DIR, "scheduled_rules.json")
 
 
 def _load_scheduled_rules():
@@ -151,15 +152,21 @@ def _build_reverse_rule(rule):
 def _register_scheduled_rule(entry):
     """
     Registers a schedule entry with the schedule library so it
-    fires at the right times.
+    fires at the right times. Tagged "argus_scheduled" so we can
+    selectively clear just these jobs when deleting rules.
     """
     rule = entry["rule"]
     reverse_rule = entry["reverse_rule"]
     start_time = entry["start_time"]
     end_time = entry["end_time"]
 
-    sched.every().day.at(start_time).do(lambda: _dispatch_rule(rule))
-    sched.every().day.at(end_time).do(lambda: _dispatch_rule(reverse_rule))
+    sched.every().day.at(start_time).do(
+        lambda: _dispatch_rule(rule)
+    ).tag("argus_scheduled")
+
+    sched.every().day.at(end_time).do(
+        lambda: _dispatch_rule(reverse_rule)
+    ).tag("argus_scheduled")
 
     print(f"[scheduler] Registered: apply at {start_time}, reverse at {end_time}", flush=True)
 
@@ -174,6 +181,41 @@ def restore_scheduled_rules():
     for entry in rules:
         _register_scheduled_rule(entry)
     print(f"[scheduler] Restored {len(rules)} scheduled rule(s) from disk", flush=True)
+
+def delete_scheduled_rule(index):
+    """
+    Deletes a scheduled rule by its index in the persisted list.
+    Also cancels the corresponding jobs from the schedule library
+    so they don't fire after deletion.
+
+    Index is 0-based, matching the order returned by
+    _load_scheduled_rules().
+    """
+    rules = _load_scheduled_rules()
+
+    if index < 0 or index >= len(rules):
+        return {
+            "success": False,
+            "output": f"No scheduled rule at index {index}. {len(rules)} rule(s) exist."
+        }
+
+    removed = rules.pop(index)
+    _save_scheduled_rules(rules)
+
+    # Cancel all existing schedule jobs and re-register the
+    # remaining ones from scratch. The schedule library has no
+    # native "cancel this specific job" API that works cleanly
+    # with lambda functions, so clearing and rebuilding the
+    # relevant jobs is the safest approach.
+    sched.clear("argus_scheduled")
+    for entry in rules:
+        _register_scheduled_rule(entry)
+
+    return {
+        "success": True,
+        "output": f"Deleted scheduled rule at index {index}",
+        "removed_rule": removed,
+    }
 
 
 if __name__ == "__main__":
