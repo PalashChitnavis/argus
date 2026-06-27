@@ -15,3 +15,5 @@ from app.models.dns_server import DnsServer
 from app.models.routing_entry import RoutingEntry
 from app.models.daily_data import DailyData
 from app.models.daily_installed_package import DailyInstalledPackage
+from app.models.firewall_rule import FirewallRule
+from app.models.command import Command, CommandResult

@@ -97,15 +97,53 @@ def run_daily_collection():
     print(f"Daily data send {'succeeded' if success else 'failed'}", flush=True)
 
 
+def _prompt_for_enrollment_token():
+    """
+    Interactively asks the user for an enrollment token when none is
+    found in .env. Keeps asking until the user provides a non-empty
+    string or presses Ctrl+C to abort.
+    """
+    print("", flush=True)
+    print("=" * 55, flush=True)
+    print("  This node is not registered with an Argus server.", flush=True)
+    print("  Generate a token on the server with:", flush=True)
+    print("    cd argus-backend && python generate_token.py", flush=True)
+    print("=" * 55, flush=True)
+
+    while True:
+        try:
+            token = input("  Paste enrollment token: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            # Non-interactive environment (e.g. systemd service) or user Ctrl+C
+            print("\n[registration] No token provided. Exiting.", flush=True)
+            sys.exit(1)
+
+        if token:
+            return token
+
+        print("  Token cannot be empty. Try again.", flush=True)
+
+
 def main():
     print("Argus agent starting up...", flush=True)
 
     # --- Step 1: Registration check ---
     if not is_registered():
-        print("Not registered. Attempting registration...", flush=True)
+        print("Not registered. Checking for enrollment token...", flush=True)
+
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        token = os.getenv("ARGUS_ENROLLMENT_TOKEN", "").strip()
+
+        # If .env has no valid token, ask the user interactively
+        if not token or token == "replace-with-real-token-later":
+            token = _prompt_for_enrollment_token()
+
         machine_id = system_profile.get_machine_id()
-        hostname = system_profile.get_hostname()
-        success = register_node(machine_id, hostname)
+        hostname   = system_profile.get_hostname()
+        success    = register_node(machine_id, hostname, enrollment_token=token)
+
         if not success:
             print("Registration failed. Exiting.", flush=True)
             sys.exit(1)
