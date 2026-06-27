@@ -112,7 +112,7 @@ def retry_queued_sends():
         url = f"{SERVER_URL}/{endpoint}"
         
         headers = {
-    "       Authorization": f"Bearer {_get_api_key()}",
+            "Authorization": f"Bearer {_get_api_key()}",
             "Content-Type": "application/json",
         }
 

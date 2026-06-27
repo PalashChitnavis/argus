@@ -226,22 +226,30 @@ def _handle_delete_rule(payload):
     return {"success": False, "error": f"Unknown rule_type for delete: {rule_type}"}
 
 
+# This shows only the run_poll_loop function — replace the existing one in poller.py
+
 def run_poll_loop():
     """
     The main command poll loop — called from agent.py's main().
-    Runs in its own thread so it doesn't interfere with the
-    existing schedule-based collection loop.
+    On every tick:
+      1. Evaluate scheduled rules (apply/reverse based on current time window)
+      2. Poll for new commands from the server
+      3. Execute any pending commands
     """
     print("[poller] Command poll loop started.", flush=True)
 
     while True:
-        commands = poll_for_commands()
+        # Check scheduled rules on every tick — this is what replaces
+        # the schedule library's clock-based job firing. If now is inside
+        # a rule's window and the rule isn't applied yet, it gets applied.
+        # If we've exited the window, it gets reversed. Zero missed ticks.
+        scheduler.evaluate_scheduled_rules()
 
+        commands = poll_for_commands()
         for command in commands:
             _execute_command(command)
 
         time.sleep(POLL_INTERVAL)
-
 
 if __name__ == "__main__":
     import json
