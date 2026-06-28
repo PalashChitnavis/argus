@@ -39,3 +39,8 @@ class FiveMinuteData(Base):
         back_populates="five_minute_data",
         cascade="all, delete-orphan"
     )
+    visited_sites = relationship(
+        "VisitedSite",
+        back_populates="five_minute_data",
+        cascade="all, delete-orphan"
+    )

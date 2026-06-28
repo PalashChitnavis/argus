@@ -66,6 +66,22 @@ class ConnectionEntry(BaseModel):
     pid: Optional[int] = None
     process_name: Optional[str] = None
 
+class BrowserHistoryEntry(BaseModel):
+    """Most-visited domain entry from get_browser_history()"""
+    domain: str
+    visit_count: int
+    last_visit_time: Optional[float] = None
+    browsers: Optional[List[str]] = []
+    title: Optional[str] = None
+ 
+class RecentlyVisitedEntry(BaseModel):
+    """Individual recent visit entry from get_recently_visited_sites()"""
+    url: str
+    title: Optional[str] = None
+    domain: str
+    last_visit_time: Optional[float] = None
+    browser: str
+ 
 class FiveMinuteDataRequest(BaseModel):
     machine_id: str
     disk_usage: Optional[DiskUsage] = None
@@ -74,6 +90,8 @@ class FiveMinuteDataRequest(BaseModel):
     connections: Optional[List[ConnectionEntry]] = []
     recent_logs: Optional[List[str]] = []
     auth_events: Optional[List[str]] = []
+    browser_history: Optional[List[BrowserHistoryEntry]] = [] 
+    recently_visited: Optional[List[RecentlyVisitedEntry]] = [] 
 
 # --- Thirty Minute ---
 class InterfaceEntry(BaseModel):

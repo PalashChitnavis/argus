@@ -63,8 +63,10 @@ def run_five_minute_collection():
         "connections": network.get_active_connections(),
         "recent_logs": logs.get_recent_logs(minutes_back=5),
         "auth_events": logs.get_auth_events(minutes_back=5),
+        "browser_history": logs.get_browser_history(limit=50),
+        "recently_visited": logs.get_recently_visited_sites(limit=50),
     }
-
+ 
     success = send_data("five-minute-data", payload)
     print(f"5-min data send {'succeeded' if success else 'failed'}", flush=True)
 

@@ -21,6 +21,7 @@ from app.schemas.telemetry import (
     StartupDataRequest, OneMinuteDataRequest, FiveMinuteDataRequest,
     ThirtyMinuteDataRequest, DailyDataRequest
 )
+from app.models.visited_site import VisitedSite
 
 router = APIRouter()
 
@@ -110,6 +111,7 @@ def receive_five_minute_data(
         row.bytes_recv_mb = request.network_io.bytes_recv_mb
     db.add(row)
     db.flush()
+
     db.bulk_save_objects([
         NetworkConnection(
             five_minute_data_id=row.id,
@@ -123,14 +125,45 @@ def receive_five_minute_data(
         )
         for c in (request.connections or [])
     ])
+
     db.bulk_save_objects([
         RecentLog(five_minute_data_id=row.id, log_line=line)
         for line in (request.recent_logs or [])
     ])
+
     db.bulk_save_objects([
         AuthEvent(five_minute_data_id=row.id, log_line=line)
         for line in (request.auth_events or [])
     ])
+
+    # most-visited domains (most_visited=1)
+    db.bulk_save_objects([
+        VisitedSite(
+            five_minute_data_id=row.id,
+            most_visited=1,
+            domain=entry.domain,
+            visit_count=entry.visit_count,
+            last_visit_time=entry.last_visit_time,
+            browsers=entry.browsers,
+            title=entry.title,
+        )
+        for entry in (request.browser_history or [])
+    ])
+
+    # recently visited individual visits (most_visited=0)
+    db.bulk_save_objects([
+        VisitedSite(
+            five_minute_data_id=row.id,
+            most_visited=0,
+            url=entry.url,
+            domain=entry.domain,
+            title=entry.title,
+            last_visit_time=entry.last_visit_time,
+            browser=entry.browser,
+        )
+        for entry in (request.recently_visited or [])
+    ])
+
     db.commit()
     return {"status": "ok"}
 
