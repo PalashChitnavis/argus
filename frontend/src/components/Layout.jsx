@@ -3,10 +3,9 @@ import { useFetch } from '../hooks/useFetch';
 import { getNodes } from '../api/client';
 
 const NAV_ITEMS = [
-  { to: 'dashboard', label: 'Dashboard' },
+  { to: 'overview', label: 'Overview' },
   { to: 'telemetry', label: 'Telemetry' },
-  { to: 'firewall', label: 'Firewall Rules' },
-  { to: 'commands', label: 'Commands' },
+  { to: 'firewall', label: 'Firewall' },
 ];
 
 export default function Layout() {
@@ -33,7 +32,7 @@ export default function Layout() {
             <div
               key={node.id}
               className={`node-item ${String(node.id) === nodeId ? 'active' : ''}`}
-              onClick={() => navigate(`/nodes/${node.id}/dashboard`)}
+              onClick={() => navigate(`/nodes/${node.id}/overview`)}
             >
               <span
                 style={{

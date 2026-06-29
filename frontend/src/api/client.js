@@ -31,33 +31,45 @@ async function request(path, { method = 'GET', body } = {}) {
 export const getNodes = () => request('/nodes');
 export const getNode = (nodeId) => request(`/nodes/${nodeId}`);
 export const getNodeStatus = (nodeId) => request(`/nodes/${nodeId}/status`);
-export const getNodeDashboard = (nodeId) => request(`/nodes/${nodeId}/dashboard`);
 
-// ---------- Telemetry (read-only) ----------
-export const getStartupData = (nodeId) => request(`/nodes/${nodeId}/startup-data`);
-export const getStartupDataHistory = (nodeId, limit = 10) =>
-  request(`/nodes/${nodeId}/startup-data/history?limit=${limit}`);
+// ---------- Overview (hero stats + top sites) ----------
+export const getNodeOverview = (nodeId) => request(`/nodes/${nodeId}/overview`);
 
-export const getOneMinuteData = (nodeId) => request(`/nodes/${nodeId}/one-minute-data`);
-export const getOneMinuteDataHistory = (nodeId, limit = 60) =>
-  request(`/nodes/${nodeId}/one-minute-data/history?limit=${limit}`);
+// ---------- Telemetry (read-only, each with a "latest" + most a "/history") ----------
+export const getOsInfo = (nodeId) => request(`/nodes/${nodeId}/os-info`);
+export const getHardwareInfo = (nodeId) => request(`/nodes/${nodeId}/hardware-info`);
 
-export const getFiveMinuteData = (nodeId) => request(`/nodes/${nodeId}/five-minute-data`);
-export const getFiveMinuteDataHistory = (nodeId, limit = 288) =>
-  request(`/nodes/${nodeId}/five-minute-data/history?limit=${limit}`);
+export const getLatestCpu = (nodeId) => request(`/nodes/${nodeId}/cpu`);
+export const getCpuHistory = (nodeId, limit = 60) => request(`/nodes/${nodeId}/cpu/history?limit=${limit}`);
 
-export const getThirtyMinuteData = (nodeId) => request(`/nodes/${nodeId}/thirty-minute-data`);
-export const getThirtyMinuteDataHistory = (nodeId, limit = 48) =>
-  request(`/nodes/${nodeId}/thirty-minute-data/history?limit=${limit}`);
+export const getLatestRam = (nodeId) => request(`/nodes/${nodeId}/ram`);
+export const getRamHistory = (nodeId, limit = 60) => request(`/nodes/${nodeId}/ram/history?limit=${limit}`);
 
-export const getDailyData = (nodeId) => request(`/nodes/${nodeId}/daily-data`);
-export const getDailyDataHistory = (nodeId, limit = 30) =>
-  request(`/nodes/${nodeId}/daily-data/history?limit=${limit}`);
+export const getLatestDisk = (nodeId) => request(`/nodes/${nodeId}/disk`);
+export const getDiskHistory = (nodeId, limit = 60) => request(`/nodes/${nodeId}/disk/history?limit=${limit}`);
 
-// ---------- Firewall Rules (CRUD) ----------
+export const getLatestNetworkIo = (nodeId) => request(`/nodes/${nodeId}/network-io`);
+export const getNetworkIoHistory = (nodeId, limit = 60) => request(`/nodes/${nodeId}/network-io/history?limit=${limit}`);
+
+export const getProcessHistory = (nodeId, limit = 100) => request(`/nodes/${nodeId}/processes/history?limit=${limit}`);
+
+export const getActiveConnections = (nodeId) => request(`/nodes/${nodeId}/active-connections`);
+
+export const getSystemLogs = (nodeId) => request(`/nodes/${nodeId}/system-logs`);
+export const getAuthEvents = (nodeId) => request(`/nodes/${nodeId}/auth-events`);
+
+export const getBrowserHistory = (nodeId) => request(`/nodes/${nodeId}/browser-history`);
+
+export const getNetworkConfig = (nodeId) => request(`/nodes/${nodeId}/network-config`);
+
+export const getSecurityStatus = (nodeId) => request(`/nodes/${nodeId}/security-status`);
+export const getSecurityStatusHistory = (nodeId, limit = 48) => request(`/nodes/${nodeId}/security-status/history?limit=${limit}`);
+
+export const getInstalledPackages = (nodeId) => request(`/nodes/${nodeId}/installed-packages`);
+
+// ---------- Firewall Rules (full CRUD) ----------
 export const getFirewallRules = (nodeId) => request(`/nodes/${nodeId}/firewall-rules`);
-export const getFirewallRule = (nodeId, ruleId) =>
-  request(`/nodes/${nodeId}/firewall-rules/${ruleId}`);
+export const getFirewallRule = (nodeId, ruleId) => request(`/nodes/${nodeId}/firewall-rules/${ruleId}`);
 export const createFirewallRule = (nodeId, rule) =>
   request(`/nodes/${nodeId}/firewall-rules`, { method: 'POST', body: rule });
 export const updateFirewallRule = (nodeId, ruleId, rule) =>
@@ -67,10 +79,8 @@ export const deleteFirewallRule = (nodeId, ruleId) =>
 export const getFirewallStatus = (nodeId) => request(`/nodes/${nodeId}/firewall-status`);
 
 // ---------- Commands (create + manage) ----------
-export const getCommands = (nodeId, limit = 20) =>
-  request(`/nodes/${nodeId}/commands?limit=${limit}`);
-export const getCommand = (nodeId, commandId) =>
-  request(`/nodes/${nodeId}/commands/${commandId}`);
+export const getCommands = (nodeId, limit = 20) => request(`/nodes/${nodeId}/commands?limit=${limit}`);
+export const getCommand = (nodeId, commandId) => request(`/nodes/${nodeId}/commands/${commandId}`);
 export const deleteCommand = (nodeId, commandId) =>
   request(`/nodes/${nodeId}/commands/${commandId}`, { method: 'DELETE' });
 

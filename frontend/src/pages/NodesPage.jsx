@@ -47,11 +47,11 @@ export default function NodesPage() {
                 <tr className="empty-row"><td colSpan={6}>No nodes have registered yet.</td></tr>
               )}
               {nodes?.map((node) => (
-                <tr key={node.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/nodes/${node.id}/dashboard`)}>
+                <tr key={node.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/nodes/${node.id}/overview`)}>
                   <td><StatusPill status={node.status} /></td>
                   <td className="mono">{node.hostname}</td>
                   <td className="mono text-dim">{node.machine_id}</td>
-                  <td className="text-dim">{new Date(node.registered_at).toLocaleString()}</td>
+                  <td className="text-dim">{new Date(node.enrolled_at).toLocaleString()}</td>
                   <td className="text-dim">{timeAgo(node.last_seen)}</td>
                   <td className="text-dim">→</td>
                 </tr>

@@ -57,6 +57,7 @@ def create_firewall_rule(
     # Create an enforce command for this rule
     if rule.enabled:
         enforce_payload = {
+            "rule_id": db_rule.id,
             "rule_type": rule.rule_type,
             "action": rule.action,
             "params": rule.params,
@@ -144,6 +145,7 @@ def update_firewall_rule(
     # Create a new enforce command if the rule is being enabled
     if not old_enabled and rule.enabled:
         enforce_payload = {
+            "rule_id": rule.id,
             "rule_type": rule.rule_type,
             "action": rule.action,
             "params": rule.params,
@@ -161,8 +163,10 @@ def update_firewall_rule(
     # Or create a delete command if the rule is being disabled
     elif old_enabled and not rule.enabled:
         delete_payload = {
+            "rule_id": rule.id,
             "rule_type": rule.rule_type,
-            "rule_id": rule.id
+            "action": rule.action,
+            "params": rule.params,
         }
         command = Command(
             command_id=str(uuid.uuid4()),
@@ -195,8 +199,10 @@ def delete_firewall_rule(
     # Create a delete command if rule was applied
     if rule.applied:
         delete_payload = {
+            "rule_id": rule.id,
             "rule_type": rule.rule_type,
-            "rule_id": rule.id
+            "action": rule.action,
+            "params": rule.params,
         }
         command = Command(
             command_id=str(uuid.uuid4()),

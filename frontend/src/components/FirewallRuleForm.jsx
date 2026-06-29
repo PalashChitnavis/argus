@@ -1,6 +1,14 @@
 import { useState } from 'react';
 
 const RULE_TYPES = ['port', 'ip', 'ip_port', 'domain', 'bandwidth', 'user_port'];
+const RULE_TYPE_LABELS = {
+  port: 'Port — block/allow a specific port',
+  ip: 'IP address — block/allow a specific device',
+  ip_port: 'IP + port — block/allow one device on one port',
+  domain: 'Domain — block/allow a website',
+  bandwidth: 'Bandwidth limit — cap network speed',
+  user_port: 'Per-user port — block/allow a port for one user',
+};
 
 const ACTIONS_BY_TYPE = {
   port: ['allow', 'deny'],
@@ -82,7 +90,7 @@ export default function FirewallRuleForm({ initial, onSave, onCancel }) {
           <div className="field">
             <label>Rule type</label>
             <select value={ruleType} onChange={(e) => handleTypeChange(e.target.value)}>
-              {RULE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {RULE_TYPES.map((t) => <option key={t} value={t}>{RULE_TYPE_LABELS[t]}</option>)}
             </select>
           </div>
           <div className="field">

@@ -1,103 +1,97 @@
 # Argus Frontend
 
-A small React (Vite) dashboard for the Argus backend. Covers every endpoint in
-`API_DOCUMENTATION.md`: nodes, telemetry (read-only), firewall rules (full
-CRUD), and commands (create + manage).
+A React (Vite) dashboard for the Argus backend, built around 3 pages per
+node: **Overview**, **Telemetry**, and **Firewall**.
 
 ## Quick start — run the whole thing
 
-You need two things running at once: the **backend** (FastAPI + Postgres)
-and this **frontend** (Vite dev server). Two terminals.
+Two terminals — backend and frontend.
 
-**Terminal 1 — backend** (use your existing `argus-backend` folder, with the
-CORS fix from `BACKEND_FIXES.md` applied — or use `argus-backend-patched/`
-from this delivery, which already has it):
+**Terminal 1 — backend:**
 
 ```bash
-cd argus-backend
+cd argus-backend          # or argus-backend-patched/ from this delivery
 python3 -m venv venv
-. venv/bin/activate          # Windows: venv\Scripts\activate
+. venv/bin/activate
 pip install -r requirements.txt
 
-# make sure .env has your real DATABASE_URL, e.g.:
+# .env needs your real DATABASE_URL, e.g.:
 # DATABASE_URL=postgresql://argus_user:1234@localhost:5432/argus
 
-python3 init_db.py            # creates tables, if not already done
+python3 init_db.py
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Leave this running. Confirm it's up: `curl http://127.0.0.1:8000/nodes`
-should return `[]` or a list of nodes — not an error.
+Confirm it's up: `curl http://127.0.0.1:8000/nodes` should return `[]` or a
+list of nodes.
 
-**Terminal 2 — frontend** (this folder):
+**Terminal 2 — frontend (this folder):**
 
 ```bash
-cd argus-frontend
 npm install
 npm run dev
 ```
 
-Open the URL it prints (usually `http://localhost:5173`). That's it — no
-login, no build step needed for local use.
+Open the printed URL (usually `http://localhost:5173`). No login needed.
 
-If your backend runs somewhere other than `127.0.0.1:8000`, edit `.env` in
-this folder (`VITE_API_BASE_URL=...`) before running `npm run dev`.
-
-If the frontend loads but shows a connection/network error, it's almost
-always one of: backend not running, wrong `VITE_API_BASE_URL`, or the CORS
-middleware fix from `BACKEND_FIXES.md` not applied yet.
+If your backend runs somewhere other than `127.0.0.1:8000`, edit
+`VITE_API_BASE_URL` in `.env` first.
 
 ## Pages
 
-| Page | Route | What it does |
+| Page | Route | What it shows |
 |---|---|---|
-| Nodes | `/nodes` | List all registered nodes, online/offline status |
-| Dashboard | `/nodes/:id/dashboard` | Combined live view — CPU/RAM/disk, OS info, security posture, recent connections |
-| Telemetry | `/nodes/:id/telemetry` | Tabbed history for 1-min / 5-min / 30-min / daily / startup data |
-| Firewall Rules | `/nodes/:id/firewall` | Full CRUD — create/edit/delete rules for all 6 rule types, with status summary |
-| Commands | `/nodes/:id/commands` | Queue refresh/enforce/delete-rule/get-rules commands, view history + results |
+| Nodes | `/nodes` | every registered node, online/offline |
+| Overview | `/nodes/:id/overview` | hero stats (CPU/RAM/disk/security), system identity, network snapshot, most-visited sites |
+| Telemetry | `/nodes/:id/telemetry` | every data type the agent collects, formatted for reading, each with its own "Refresh now" button |
+| Firewall | `/nodes/:id/firewall` | rules in plain English ("Block incoming traffic on port 80"), create/edit/delete, status panel explaining enabled vs applied |
 
-No login/auth screen — the frontend-admin endpoints in your backend are
-unauthenticated by design (only the Linux-end-node endpoints require a
-Bearer token, and those aren't used here).
+### How "Refresh now" works
+
+Clicking it queues a command for the node and waits (polling every 2s, up
+to ~20s) for the node to respond — it does **not** instantly change the
+displayed value, since the node has to actually run that collector and
+report back. You'll see the button cycle through "Queuing…" → "Waiting on
+node…" → either the fresh result or "Node didn't respond" if the agent is
+offline. See `BACKEND_CHANGES.md` for why this doesn't update stored
+history.
 
 ## Every file in this project
 
 ```
 argus-frontend/
-  .env                          — VITE_API_BASE_URL (backend URL)
-  .gitignore
-  index.html                    — Vite entry HTML, sets page title
+  .env                          — VITE_API_BASE_URL
+  index.html
   package.json / package-lock.json
   vite.config.js
-  README.md                     — this file
+  README.md
   public/
     favicon.svg
     icons.svg
   src/
-    main.jsx                    — React root, router + toast provider setup
+    main.jsx                    — React root, router + toast provider
     App.jsx                     — route definitions
     styles.css                  — entire app's CSS (dark console theme)
     api/
       client.js                 — every backend call, one function per endpoint
     hooks/
       useFetch.js                — fetch/loading/error hook used by every page
+      useRefreshCommand.js        — queues a refresh command, polls for its result
+    lib/
+      firewallText.js             — turns rule_type/action/params into plain English
     components/
-      Layout.jsx                 — sidebar (node picker + nav) + page outlet
-      StatusPill.jsx              — online/offline badge
-      Toast.jsx                   — toast notification provider + hook
-      ConfirmDialog.jsx           — generic delete-confirmation modal
-      FirewallRuleForm.jsx        — create/edit modal, dynamic fields per rule type
-      CommandForm.jsx             — new-command modal (refresh/enforce/delete-rule/get-rules)
+      Layout.jsx                  — sidebar (node picker + nav) + page outlet
+      StatusPill.jsx               — online/offline badge
+      Toast.jsx                    — toast notification provider + hook
+      ConfirmDialog.jsx            — generic delete-confirmation modal
+      FirewallRuleForm.jsx         — create/edit modal, dynamic fields per rule type
+      RefreshButton.jsx            — "Refresh now" button used throughout Telemetry
     pages/
-      NodesPage.jsx               — /nodes
-      DashboardPage.jsx           — /nodes/:nodeId/dashboard
-      TelemetryPage.jsx           — /nodes/:nodeId/telemetry
-      FirewallPage.jsx            — /nodes/:nodeId/firewall
-      CommandsPage.jsx            — /nodes/:nodeId/commands
+      NodesPage.jsx                — /nodes
+      OverviewPage.jsx             — /nodes/:nodeId/overview
+      TelemetryPage.jsx            — /nodes/:nodeId/telemetry
+      FirewallPage.jsx             — /nodes/:nodeId/firewall
 ```
-
-That's the full list — nothing else is needed to run or build this project.
 
 ## Building for production
 
@@ -105,60 +99,13 @@ That's the full list — nothing else is needed to run or build this project.
 npm run build
 ```
 
-Output goes to `dist/`, servable as static files from anywhere (nginx,
-Vercel, etc). Set `VITE_API_BASE_URL` to your real backend URL before
-building if it's not `127.0.0.1:8000`.
+Output goes to `dist/`. Set `VITE_API_BASE_URL` to your real backend URL
+first if it's not `127.0.0.1:8000`.
 
 ## Backend changes required
 
-Your backend had **no CORS configuration**, which blocks a browser-based
-frontend running on a different port from calling it at all. I added
-`CORSMiddleware` to `app/main.py` — this is required for this frontend (or
-any browser-based frontend) to work.
-
-I also fixed two backend bugs found while testing this frontend against a
-live instance — see `BACKEND_FIXES.md` in the project root for details.
-Neither is required for the frontend to function against your real Postgres
-setup, but the second one (the `/dashboard` endpoint) is worth applying since
-it silently drops nested data on every deployment, not just in my test
-environment.
-
-## Project structure
-
-```
-src/
-  api/client.js          — every backend call, one function per endpoint
-  components/            — Layout, StatusPill, Toast, ConfirmDialog, form modals
-  hooks/useFetch.js       — small fetch/loading/error hook used by every page
-  pages/                  — one file per route
-  styles.css              — single stylesheet, dark console theme
-```
-
-Everything is plain CSS (no Tailwind/UI library) and plain `fetch` (no
-React Query) to keep the codebase small and easy to read end to end.
-
-Your backend had **no CORS configuration**, which blocks a browser-based
-frontend running on a different port from calling it at all. I added
-`CORSMiddleware` to `app/main.py` — this is required for this frontend (or
-any browser-based frontend) to work.
-
-I also fixed two backend bugs found while testing this frontend against a
-live instance — see `BACKEND_FIXES.md` in the project root for details.
-Neither is required for the frontend to function against your real Postgres
-setup, but the second one (the `/dashboard` endpoint) is worth applying since
-it silently drops nested data on every deployment, not just in my test
-environment.
-
-## Project structure
-
-```
-src/
-  api/client.js          — every backend call, one function per endpoint
-  components/            — Layout, StatusPill, Toast, ConfirmDialog, form modals
-  hooks/useFetch.js       — small fetch/loading/error hook used by every page
-  pages/                  — one file per route
-  styles.css              — single stylesheet, dark console theme
-```
-
-Everything is plain CSS (no Tailwind/UI library) and plain `fetch` (no
-React Query) to keep the codebase small and easy to read end to end.
+See `BACKEND_CHANGES.md` (one level up) for the full list — short version:
+your `FirewallRule` model was out of sync with its own schema (every
+firewall endpoint would have crashed), and there was no read API at all for
+nodes or any telemetry data, which is almost certainly why your 5-minute
+data call hung. Both are fixed in `argus-backend-patched/`.

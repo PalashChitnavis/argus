@@ -5,6 +5,7 @@ from app.db import get_db
 from app.core.auth import get_current_node
 from app.models.node import Node
 from app.models.command import Command, CommandResult
+from app.models.firewall_rule import FirewallRule
 from app.schemas.firewall_commands import (
     CommandOut,
     PendingCommandsResponse,
@@ -207,7 +208,7 @@ def post_command_result(
     command.executed = True
     command.executed_at = datetime.now(timezone.utc)
     db.commit()
-    
+
     # Store the command result
     result = CommandResult(
         command_id=command_id,
@@ -216,8 +217,26 @@ def post_command_result(
         data=request.data
     )
     db.add(result)
+
+    # If this was an enforce/delete_rule command for a specific firewall
+    # rule, reflect the node's actual success/failure on that rule's
+    # `applied` flag. The payload carries rule_id for exactly this purpose
+    # (see app/routers/firewall.py — create/update_firewall_rule).
+    if command.command_type in ("enforce", "delete_rule"):
+        rule_id = (command.payload or {}).get("rule_id")
+        if rule_id is not None:
+            rule = db.query(FirewallRule).filter(
+                FirewallRule.id == rule_id,
+                FirewallRule.node_id == node_id,
+            ).first()
+            if rule:
+                if command.command_type == "enforce":
+                    rule.applied = bool(request.success)
+                else:  # delete_rule succeeding means it's no longer applied
+                    rule.applied = not bool(request.success)
+
     db.commit()
-    
+
     return {"status": "ok", "command_id": command_id}
 
 

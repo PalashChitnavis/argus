@@ -28,7 +28,7 @@ import os
 from dotenv import load_dotenv
 
 from enforcement.state import get_all_enforcement_state
-from enforcement import firewall, hosts, bandwidth, iptables, scheduler
+from enforcement import firewall, scheduler
 from collectors.system_profile import collector as system_profile
 from collectors.resource_usage import collector as resource_usage
 from collectors.process import collector as process_collector
@@ -209,22 +209,36 @@ def _handle_enforce(payload):
 
 
 def _handle_delete_rule(payload):
-    """Routes a delete command to the correct enforcement module."""
+    """
+    Routes a delete command to the correct enforcement module.
+
+    Preferred path: the payload carries the rule's original rule_type/
+    action/params (everything create_firewall_rule originally sent for
+    an "enforce" command). We undo it the same way scheduled rules get
+    reversed when their window closes — by re-dispatching the same rule
+    with its action flipped (deny->allow, block->unblock, set->remove).
+    This works for port/ip/ip_port/domain/bandwidth/user_port without
+    needing to track any node-side state (like a UFW rule number) that
+    was never captured in the first place.
+
+    Legacy paths (rule_type == "firewall" or "scheduled_rule") are kept
+    for any old-style payloads still in flight.
+    """
     rule_type = payload.get("rule_type")
 
     if rule_type == "firewall":
         return firewall.delete_rule(payload["rule_number"])
-    elif rule_type == "domain":
-        return hosts.unblock_domain(payload["domain"])
-    elif rule_type == "bandwidth":
-        return bandwidth.remove_bandwidth_limit(interface=payload.get("interface"))
-    elif rule_type == "user_block":
-        return iptables.unblock_user_network(
-            username=payload["username"],
-            port=payload.get("port"),
-        )
     elif rule_type == "scheduled_rule":
         return scheduler.delete_scheduled_rule(payload["index"])
+
+    action = payload.get("action")
+    params = payload.get("params", {})
+
+    if rule_type and action:
+        reverse_rule = scheduler._build_reverse_rule(
+            {"type": rule_type, "action": action, "params": params}
+        )
+        return scheduler._dispatch_rule(reverse_rule)
 
     return {"success": False, "error": f"Unknown rule_type for delete: {rule_type}"}
 
