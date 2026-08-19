@@ -19,3 +19,4 @@ from app.models.security_status import SecurityStatus
 from app.models.installed_package import InstalledPackage
 from app.models.os_info import OsInfo
 from app.models.hardware_info import HardwareInfo
+from app.models.firewall_rule import FirewallHistory

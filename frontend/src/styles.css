@@ -571,3 +571,20 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 
 .tab:hover { color: var(--text); }
+
+/* ---------- Firewall rule cards ---------- */
+
+.firewall-rule-card {
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+
+.firewall-rule-card:hover {
+  border-color: var(--border-bright);
+}
+
+@keyframes spin-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}

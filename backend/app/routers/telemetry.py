@@ -494,3 +494,299 @@ def receive_security_status(
     ))
     db.commit()
     return {"status": "ok"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# READ endpoints  (frontend → backend)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from fastapi import HTTPException
+from sqlalchemy import desc
+
+# ── CPU ───────────────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/cpu")
+def get_latest_cpu(node_id: int, db: Session = Depends(get_db)):
+    row = db.query(CpuSnapshot).filter(CpuSnapshot.node_id == node_id)\
+            .order_by(desc(CpuSnapshot.received_at)).first()
+    if not row:
+        return None
+    return {"cpu_percent_used": row.cpu_percent_used, "received_at": row.received_at}
+
+@router.get("/nodes/{node_id}/cpu/history")
+def get_cpu_history(node_id: int, limit: int = 20, db: Session = Depends(get_db)):
+    rows = db.query(CpuSnapshot).filter(CpuSnapshot.node_id == node_id)\
+             .order_by(desc(CpuSnapshot.received_at)).limit(limit).all()
+    return [{"cpu_percent_used": r.cpu_percent_used, "received_at": r.received_at} for r in rows]
+
+# ── RAM ───────────────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/ram")
+def get_latest_ram(node_id: int, db: Session = Depends(get_db)):
+    row = db.query(RamSnapshot).filter(RamSnapshot.node_id == node_id)\
+            .order_by(desc(RamSnapshot.received_at)).first()
+    if not row:
+        return None
+    return {
+        "ram_percent_used": row.ram_percent_used,
+        "ram_used_gb": row.ram_used_gb,
+        "ram_available_gb": row.ram_available_gb,
+        "received_at": row.received_at,
+    }
+
+# ── Disk ──────────────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/disk")
+def get_latest_disk(node_id: int, db: Session = Depends(get_db)):
+    row = db.query(DiskSnapshot).filter(DiskSnapshot.node_id == node_id)\
+            .order_by(desc(DiskSnapshot.received_at)).first()
+    if not row:
+        return None
+    return {
+        "disk_percent_used": row.disk_percent_used,
+        "disk_used_gb": row.disk_used_gb,
+        "disk_free_gb": row.disk_free_gb,
+        "received_at": row.received_at,
+    }
+
+# ── Network I/O ───────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/network-io")
+def get_latest_network_io(node_id: int, db: Session = Depends(get_db)):
+    row = db.query(NetworkIoSnapshot).filter(NetworkIoSnapshot.node_id == node_id)\
+            .order_by(desc(NetworkIoSnapshot.received_at)).first()
+    if not row:
+        return None
+    return {
+        "bytes_sent_mb": row.bytes_sent_mb,
+        "bytes_recv_mb": row.bytes_recv_mb,
+        "received_at": row.received_at,
+    }
+
+# ── Processes ─────────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/processes/history")
+def get_process_history(node_id: int, limit: int = 200, db: Session = Depends(get_db)):
+    rows = db.query(ProcessSnapshot).filter(ProcessSnapshot.node_id == node_id)\
+             .order_by(desc(ProcessSnapshot.received_at)).limit(limit).all()
+    return [
+        {
+            "pid": r.pid,
+            "name": r.name,
+            "username": r.username,
+            "cmdline": r.cmdline,
+            "status": r.status,
+            "cpu_percent": r.cpu_percent,
+            "memory_percent": r.memory_percent,
+            "received_at": r.received_at,
+        }
+        for r in rows
+    ]
+
+# ── Active connections ────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/active-connections")
+def get_active_connections(node_id: int, db: Session = Depends(get_db)):
+    # Latest batch
+    latest = db.query(ActiveConnection).filter(ActiveConnection.node_id == node_id)\
+               .order_by(desc(ActiveConnection.received_at)).first()
+    if not latest:
+        return {"connections": [], "received_at": None}
+    rows = db.query(ActiveConnection).filter(
+        ActiveConnection.node_id == node_id,
+        ActiveConnection.batch_id == latest.batch_id,
+    ).all()
+    return {
+        "received_at": latest.received_at,
+        "connections": [
+            {
+                "local_ip": r.local_ip, "local_port": r.local_port,
+                "remote_ip": r.remote_ip, "remote_port": r.remote_port,
+                "status": r.status, "process_name": r.process_name,
+            }
+            for r in rows
+        ],
+    }
+
+# ── System logs ───────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/system-logs")
+def get_system_logs(node_id: int, db: Session = Depends(get_db)):
+    latest = db.query(SystemLog).filter(SystemLog.node_id == node_id)\
+               .order_by(desc(SystemLog.received_at)).first()
+    if not latest:
+        return {"log_lines": [], "received_at": None}
+    rows = db.query(SystemLog).filter(
+        SystemLog.node_id == node_id,
+        SystemLog.batch_id == latest.batch_id,
+    ).order_by(SystemLog.id).all()
+    return {"received_at": latest.received_at, "log_lines": [r.log_line for r in rows]}
+
+# ── Auth events ───────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/auth-events")
+def get_auth_events(node_id: int, db: Session = Depends(get_db)):
+    latest = db.query(AuthEvent).filter(AuthEvent.node_id == node_id)\
+               .order_by(desc(AuthEvent.received_at)).first()
+    if not latest:
+        return {"log_lines": [], "received_at": None}
+    rows = db.query(AuthEvent).filter(
+        AuthEvent.node_id == node_id,
+        AuthEvent.batch_id == latest.batch_id,
+    ).order_by(AuthEvent.id).all()
+    return {"received_at": latest.received_at, "log_lines": [r.log_line for r in rows]}
+
+# ── Browser history ───────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/browser-history")
+def get_browser_history(node_id: int, db: Session = Depends(get_db)):
+    latest = db.query(VisitedSite).filter(VisitedSite.node_id == node_id)\
+               .order_by(desc(VisitedSite.received_at)).first()
+    if not latest:
+        return {"most_visited": [], "recently_visited": [], "received_at": None}
+
+    rows = db.query(VisitedSite).filter(
+        VisitedSite.node_id == node_id,
+        VisitedSite.batch_id == latest.batch_id,
+    ).all()
+
+    most_visited = [
+        {
+            "domain": r.domain,
+            "title": r.title,
+            "visit_count": r.visit_count,
+            "last_visit_time": r.last_visit_time,
+            "browsers": r.browsers,
+        }
+        for r in rows if r.most_visited == 1
+    ]
+    recently_visited = [
+        {
+            "domain": r.domain,
+            "title": r.title,
+            "url": r.url,
+            "last_visit_time": r.last_visit_time,
+            "browser": r.browser,
+        }
+        for r in rows if r.most_visited == 0
+    ]
+    return {
+        "received_at": latest.received_at,
+        "most_visited": sorted(most_visited, key=lambda x: -(x["visit_count"] or 0)),
+        "recently_visited": sorted(recently_visited, key=lambda x: -(x["last_visit_time"] or 0)),
+    }
+
+# ── Network config ────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/network-config")
+def get_network_config(node_id: int, db: Session = Depends(get_db)):
+    # Interfaces — latest batch
+    latest_iface = db.query(NetworkInterface).filter(NetworkInterface.node_id == node_id)\
+                     .order_by(desc(NetworkInterface.received_at)).first()
+    interfaces = []
+    received_at = None
+    if latest_iface:
+        received_at = latest_iface.received_at
+        iface_rows = db.query(NetworkInterface).filter(
+            NetworkInterface.node_id == node_id,
+            NetworkInterface.batch_id == latest_iface.batch_id,
+        ).all()
+        interfaces = [
+            {"interface_name": r.interface_name, "ipv4": r.ipv4, "ipv6": r.ipv6, "mac_address": r.mac_address}
+            for r in iface_rows
+        ]
+
+    # DNS
+    latest_dns = db.query(DnsServer).filter(DnsServer.node_id == node_id)\
+                   .order_by(desc(DnsServer.received_at)).first()
+    dns_servers = []
+    if latest_dns:
+        dns_rows = db.query(DnsServer).filter(
+            DnsServer.node_id == node_id,
+            DnsServer.batch_id == latest_dns.batch_id,
+        ).all()
+        dns_servers = [r.address for r in dns_rows]
+
+    # Routing
+    latest_route = db.query(RoutingEntry).filter(RoutingEntry.node_id == node_id)\
+                     .order_by(desc(RoutingEntry.received_at)).first()
+    routing_table = []
+    if latest_route:
+        route_rows = db.query(RoutingEntry).filter(
+            RoutingEntry.node_id == node_id,
+            RoutingEntry.batch_id == latest_route.batch_id,
+        ).all()
+        routing_table = [r.route for r in route_rows]
+
+    return {
+        "received_at": received_at,
+        "interfaces": interfaces,
+        "dns_servers": dns_servers,
+        "routing_table": routing_table,
+    }
+
+# ── Security status ───────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/security-status")
+def get_security_status(node_id: int, db: Session = Depends(get_db)):
+    row = db.query(SecurityStatus).filter(SecurityStatus.node_id == node_id)\
+            .order_by(desc(SecurityStatus.received_at)).first()
+    if not row:
+        return None
+    return {
+        "firewall_tool": row.firewall_tool,
+        "firewall_active": row.firewall_active,
+        "disk_encrypted": row.disk_encrypted,
+        "root_login_permitted": row.root_login_permitted,
+        "password_auth_permitted": row.password_auth_permitted,
+        "mac_tool": row.mac_tool,
+        "mac_enabled": row.mac_enabled,
+        "received_at": row.received_at,
+    }
+
+# ── OS info ───────────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/os-info")
+def get_os_info(node_id: int, db: Session = Depends(get_db)):
+    row = db.query(OsInfo).filter(OsInfo.node_id == node_id)\
+            .order_by(desc(OsInfo.received_at)).first()
+    if not row:
+        return None
+    return {
+        "distro_name": row.distro_name, "distro_version": row.distro_version,
+        "distro_codename": row.distro_codename, "kernel_version": row.kernel_version,
+        "architecture": row.architecture, "received_at": row.received_at,
+    }
+
+# ── Hardware info ─────────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/hardware-info")
+def get_hardware_info(node_id: int, db: Session = Depends(get_db)):
+    row = db.query(HardwareInfo).filter(HardwareInfo.node_id == node_id)\
+            .order_by(desc(HardwareInfo.received_at)).first()
+    if not row:
+        return None
+    return {
+        "cpu_cores_physical": row.cpu_cores_physical,
+        "cpu_cores_logical": row.cpu_cores_logical,
+        "ram_total_gb": row.ram_total_gb,
+        "disk_total_gb": row.disk_total_gb,
+        "received_at": row.received_at,
+    }
+
+# ── Installed packages ────────────────────────────────────────────────────────
+
+@router.get("/nodes/{node_id}/installed-packages")
+def get_installed_packages(node_id: int, db: Session = Depends(get_db)):
+    latest = db.query(InstalledPackage).filter(InstalledPackage.node_id == node_id)\
+               .order_by(desc(InstalledPackage.received_at)).first()
+    if not latest:
+        return {"packages": [], "received_at": None}
+    rows = db.query(InstalledPackage).filter(
+        InstalledPackage.node_id == node_id,
+        InstalledPackage.batch_id == latest.batch_id,
+    ).order_by(InstalledPackage.name).all()
+    return {
+        "received_at": latest.received_at,
+        "packages": [r.package_name for r in rows],
+    }

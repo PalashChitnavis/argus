@@ -3,21 +3,27 @@ import time
 import subprocess
 
 def get_running_processes():
-    """
-    Returns a snapshot of all currently running processes.
-    Now includes runtime_seconds — how long each process has been
-    running — calculated from create_time vs current time.
-    """
     processes = []
     now = time.time()
 
-    for proc in psutil.process_iter([
+    procs = list(psutil.process_iter([
         "pid", "name", "username", "cmdline",
         "status", "create_time"
-    ]):
+    ]))
+
+    # Prime: first call always returns 0.0, so throw it away
+    for proc in procs:
+        try:
+            proc.cpu_percent(interval=None)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+
+    # Give the OS time to accumulate CPU ticks between the two samples
+    time.sleep(0.5)
+
+    for proc in procs:
         try:
             info = proc.info
-
             create_time = info["create_time"]
             runtime_seconds = int(now - create_time) if create_time else None
 
@@ -29,7 +35,7 @@ def get_running_processes():
                 "status": info["status"],
                 "create_time": create_time,
                 "runtime_seconds": runtime_seconds,
-                "cpu_percent": proc.cpu_percent(interval=None),
+                "cpu_percent": proc.cpu_percent(interval=None),  # now real
                 "memory_percent": round(proc.memory_percent(), 2),
             })
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):

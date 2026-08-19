@@ -220,3 +220,40 @@ def restore_scheduled_rules():
     print(f"[scheduler] Loaded {len(rules)} scheduled rule(s) from disk.", flush=True)
     # Evaluate immediately so any open window is enforced without waiting
     evaluate_scheduled_rules()
+
+def delete_rule_by_definition(rule, schedule_info):
+    """
+    Removes a scheduled rule by matching its definition (type+action+params),
+    and dispatches the reverse rule if it was currently active.
+    Used when a delete_rule command arrives for a rule that had a schedule.
+    """
+    rules = _load_scheduled_rules()
+    target_type = rule.get("type")
+    target_action = rule.get("action")
+    target_params = rule.get("params", {})
+
+    new_rules = []
+    removed = False
+    for entry in rules:
+        r = entry.get("rule", {})
+        match = (
+            r.get("type") == target_type
+            and r.get("action") == target_action
+            and r.get("params") == target_params
+        )
+        if match and not removed:
+            removed = True
+            if entry.get("active", False):
+                print(f"[scheduler] Scheduled rule is active — reversing before delete.", flush=True)
+                _dispatch_rule(entry["reverse_rule"])
+        else:
+            new_rules.append(entry)
+
+    if removed:
+        _save_scheduled_rules(new_rules)
+        return {"success": True, "output": "Scheduled rule deleted and reversed if active"}
+
+    # Rule not found in scheduler state — still try to reverse it now
+    reverse_rule = _build_reverse_rule({"type": target_type, "action": target_action, "params": target_params})
+    result = _dispatch_rule(reverse_rule)
+    return result

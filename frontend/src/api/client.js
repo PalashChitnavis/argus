@@ -94,3 +94,7 @@ export const createGetRulesCommand = (nodeId) =>
   request(`/nodes/${nodeId}/commands/get-rules`, { method: 'POST' });
 
 export { BASE_URL };
+
+// ---------- Firewall History ----------
+export const getFirewallHistory = (nodeId, limit = 100) =>
+  request(`/nodes/${nodeId}/firewall-history?limit=${limit}`);

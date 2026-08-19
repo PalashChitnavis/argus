@@ -8,17 +8,6 @@ Every 10 seconds:
 
 The poll request also acts as a heartbeat — the backend marks the node
 online when it receives a poll and offline when polls stop arriving.
-
-Refresh commands
-----------------
-When the frontend clicks "refresh" on a data block, it creates a
-refresh command with a `collector` field naming which function to re-run.
-The poller executes that collector and sends the result back via the
-command result endpoint, so the frontend can display fresh data without
-waiting for the next scheduled collection.
-
-The collector names match the agent.py function names and are used
-directly by the frontend when building refresh commands.
 """
 
 import time
@@ -77,10 +66,7 @@ def poll_for_commands():
         response = requests.get(url, headers=_get_headers(), timeout=5)
         response.raise_for_status()
         return response.json().get("commands", [])
-    except (requests.exceptions.ConnectionError,
-            requests.exceptions.Timeout,
-            requests.exceptions.HTTPError,
-            Exception):
+    except Exception:
         return []
 
 
@@ -100,7 +86,31 @@ def _report_result(command_id, success, data=None):
     try:
         requests.post(url, json=payload, headers=_get_headers(), timeout=5)
     except Exception:
-        pass  # result reporting is best-effort
+        pass
+
+
+def _report_firewall_status(rule_id, command_id, event, success, message=None):
+    """
+    Reports the outcome of an enforce or delete_rule command back to the
+    /firewall-rules/apply-status endpoint so the frontend can show live status
+    and the history log is updated.
+    """
+    node_id = _get_node_id()
+    if node_id is None:
+        return
+
+    url = f"{SERVER_URL}/nodes/{node_id}/firewall-rules/apply-status"
+    payload = {
+        "rule_id": rule_id,
+        "command_id": command_id,
+        "event": event,
+        "success": success,
+        "message": message,
+    }
+    try:
+        requests.post(url, json=payload, headers=_get_headers(), timeout=5)
+    except Exception as e:
+        print(f"[poller] Could not report firewall status: {e}", flush=True)
 
 
 def _execute_command(command):
@@ -115,9 +125,9 @@ def _execute_command(command):
         if cmd_type == "refresh":
             result = _handle_refresh(payload)
         elif cmd_type == "enforce":
-            result = _handle_enforce(payload)
+            result = _handle_enforce(payload, command_id)
         elif cmd_type == "delete_rule":
-            result = _handle_delete_rule(payload)
+            result = _handle_delete_rule(payload, command_id)
         elif cmd_type == "get_rules":
             result = get_all_enforcement_state()
         else:
@@ -133,30 +143,19 @@ def _execute_command(command):
 def _handle_refresh(payload):
     """
     Executes a single collector on demand and returns its data.
-
-    Collector names correspond to the telemetry endpoints and the agent
-    collect_* function names (without the 'collect_' prefix).
-    The frontend uses these exact names when building refresh commands.
     """
     collector_name = payload.get("collector")
 
     collectors = {
-        # Resource usage
         "cpu":                   lambda: resource_usage.get_cpu_usage(),
         "disk":                  lambda: resource_usage.get_disk_usage(),
         "ram":                   lambda: resource_usage.get_ram_usage(),
         "network_io":            lambda: resource_usage.get_network_io(),
-
-        # Processes
         "processes":             lambda: process_collector.get_running_processes(),
-
-        # Network
         "active_connections":    lambda: network.get_active_connections(),
         "network_interfaces":    lambda: network.get_network_interfaces(),
         "dns_servers":           lambda: network.get_dns_servers(),
         "routing_table":         lambda: network.get_routing_table(),
-
-        # Security
         "security_status":       lambda: {
             **security.get_firewall_status(),
             **security.get_disk_encryption_status(),
@@ -164,21 +163,15 @@ def _handle_refresh(payload):
             **security.get_mac_status(),
         },
         "firewall_rules":        lambda: security.get_firewall_rules(),
-
-        # Logs / browser
         "system_logs":           lambda: logs.get_recent_logs(minutes_back=5),
         "auth_events":           lambda: logs.get_auth_events(minutes_back=5),
         "browser_history":       lambda: {
             "most_visited": logs.get_browser_history(limit=50),
             "recently_visited": logs.get_recently_visited_sites(limit=50),
         },
-
-        # System profile
         "os_info":               lambda: system_profile.get_os_info(),
         "hardware_info":         lambda: system_profile.get_hardware_info(),
         "installed_packages":    lambda: system_profile.get_installed_packages(),
-
-        # Enforcement state
         "all_rules":             lambda: get_all_enforcement_state(),
     }
 
@@ -189,58 +182,94 @@ def _handle_refresh(payload):
     return {"collector": collector_name, "data": data}
 
 
-def _handle_enforce(payload):
-    """Routes an enforce command to the correct enforcement module."""
+def _handle_enforce(payload, command_id):
+    """Routes an enforce command to the correct enforcement module and reports status."""
     rule_type = payload.get("rule_type")
     action = payload.get("action")
     params = payload.get("params", {})
     schedule_info = payload.get("schedule")
+    rule_id = payload.get("rule_id")
 
     if schedule_info:
-        return scheduler.apply_scheduled_rule(
+        result = scheduler.apply_scheduled_rule(
             rule={"type": rule_type, "action": action, "params": params},
             start_time=schedule_info["start_time"],
             end_time=schedule_info["end_time"],
         )
+    else:
+        result = scheduler.apply_rule(
+            {"type": rule_type, "action": action, "params": params}
+        )
 
-    return scheduler.apply_rule(
-        {"type": rule_type, "action": action, "params": params}
-    )
+    success = result.get("success", False)
+    message = result.get("output", "")
+
+    print(f"[poller] Enforce result: success={success} message={message}", flush=True)
+
+    if rule_id is not None:
+        _report_firewall_status(
+            rule_id=rule_id,
+            command_id=command_id,
+            event="applied",
+            success=success,
+            message=message,
+        )
+
+    return result
 
 
-def _handle_delete_rule(payload):
+def _handle_delete_rule(payload, command_id):
     """
     Routes a delete command to the correct enforcement module.
 
-    Preferred path: the payload carries the rule's original rule_type/
-    action/params (everything create_firewall_rule originally sent for
-    an "enforce" command). We undo it the same way scheduled rules get
-    reversed when their window closes — by re-dispatching the same rule
-    with its action flipped (deny->allow, block->unblock, set->remove).
-    This works for port/ip/ip_port/domain/bandwidth/user_port without
-    needing to track any node-side state (like a UFW rule number) that
-    was never captured in the first place.
-
-    Legacy paths (rule_type == "firewall" or "scheduled_rule") are kept
-    for any old-style payloads still in flight.
+    The payload now always carries rule_type / action / params (the same data
+    that was used for the original enforce command), so we can build the reverse
+    rule without needing any node-side state.
     """
     rule_type = payload.get("rule_type")
+    rule_id = payload.get("rule_id")
 
+    # Legacy: old-style UFW rule number
     if rule_type == "firewall":
-        return firewall.delete_rule(payload["rule_number"])
+        result = firewall.delete_rule(payload["rule_number"])
     elif rule_type == "scheduled_rule":
-        return scheduler.delete_scheduled_rule(payload["index"])
+        result = scheduler.delete_scheduled_rule(payload["index"])
+    else:
+        action = payload.get("action")
+        params = payload.get("params", {})
+        schedule_info = payload.get("schedule")
 
-    action = payload.get("action")
-    params = payload.get("params", {})
+        if rule_type and action:
+            if schedule_info:
+                # Scheduled rule: remove from scheduler state so window won't re-apply
+                # and dispatch the reverse immediately if currently active
+                result = scheduler.delete_rule_by_definition(
+                    rule={"type": rule_type, "action": action, "params": params},
+                    schedule_info=schedule_info,
+                )
+            else:
+                reverse_rule = scheduler._build_reverse_rule(
+                    {"type": rule_type, "action": action, "params": params}
+                )
+                result = scheduler._dispatch_rule(reverse_rule)
+        else:
+            result = {"success": False, "output": f"Unknown rule_type for delete: {rule_type}"}
 
-    if rule_type and action:
-        reverse_rule = scheduler._build_reverse_rule(
-            {"type": rule_type, "action": action, "params": params}
+    success = result.get("success", False)
+    message = result.get("output", "")
+
+    print(f"[poller] Delete result: success={success} message={message}", flush=True)
+
+    if rule_id is not None:
+        _report_firewall_status(
+            rule_id=rule_id,
+            command_id=command_id,
+            event="deleted",
+            success=success,
+            message=message,
         )
-        return scheduler._dispatch_rule(reverse_rule)
 
-    return {"success": False, "error": f"Unknown rule_type for delete: {rule_type}"}
+    return result
 
 
 def run_poll_loop():
