@@ -51,9 +51,11 @@ export const getDiskHistory = (nodeId, limit = 60) => request(`/nodes/${nodeId}/
 export const getLatestNetworkIo = (nodeId) => request(`/nodes/${nodeId}/network-io`);
 export const getNetworkIoHistory = (nodeId, limit = 60) => request(`/nodes/${nodeId}/network-io/history?limit=${limit}`);
 
-export const getProcessHistory = (nodeId, limit = 100) => request(`/nodes/${nodeId}/processes/history?limit=${limit}`);
+export const getProcessHistory = (nodeId, limit = 15, offset = 0) =>
+  request(`/nodes/${nodeId}/processes/history?limit=${limit}&offset=${offset}`);
 
-export const getActiveConnections = (nodeId) => request(`/nodes/${nodeId}/active-connections`);
+export const getActiveConnections = (nodeId, limit = 15, offset = 0) =>
+  request(`/nodes/${nodeId}/active-connections?limit=${limit}&offset=${offset}`);
 
 export const getSystemLogs = (nodeId) => request(`/nodes/${nodeId}/system-logs`);
 export const getAuthEvents = (nodeId) => request(`/nodes/${nodeId}/auth-events`);
@@ -77,6 +79,8 @@ export const updateFirewallRule = (nodeId, ruleId, rule) =>
 export const deleteFirewallRule = (nodeId, ruleId) =>
   request(`/nodes/${nodeId}/firewall-rules/${ruleId}`, { method: 'DELETE' });
 export const getFirewallStatus = (nodeId) => request(`/nodes/${nodeId}/firewall-status`);
+export const getFirewallHistory = (nodeId, limit = 100) =>
+  request(`/nodes/${nodeId}/firewall-history?limit=${limit}`);
 
 // ---------- Commands (create + manage) ----------
 export const getCommands = (nodeId, limit = 20) => request(`/nodes/${nodeId}/commands?limit=${limit}`);
@@ -94,7 +98,3 @@ export const createGetRulesCommand = (nodeId) =>
   request(`/nodes/${nodeId}/commands/get-rules`, { method: 'POST' });
 
 export { BASE_URL };
-
-// ---------- Firewall History ----------
-export const getFirewallHistory = (nodeId, limit = 100) =>
-  request(`/nodes/${nodeId}/firewall-history?limit=${limit}`);

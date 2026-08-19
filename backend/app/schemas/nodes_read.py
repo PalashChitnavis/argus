@@ -120,6 +120,15 @@ class ProcessSnapshotResponse(BaseModel):
         from_attributes = True
 
 
+class ProcessHistoryPageResponse(BaseModel):
+    """Paginated wrapper — `total` is the full row count for this node,
+    independent of `limit`/`offset`, so the frontend can render page numbers."""
+    items: List[ProcessSnapshotResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 # ── Active connections (batched) ────────────────────────────────────────────
 
 class ActiveConnectionResponse(BaseModel):
@@ -139,6 +148,9 @@ class ActiveConnectionsBatchResponse(BaseModel):
     batch_id: str
     received_at: datetime
     connections: List[ActiveConnectionResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 # ── System / auth logs (batched) ────────────────────────────────────────────

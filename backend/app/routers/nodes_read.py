@@ -47,6 +47,7 @@ from app.schemas.nodes_read import (
     DiskSnapshotResponse,
     NetworkIoSnapshotResponse,
     ProcessSnapshotResponse,
+    ProcessHistoryPageResponse,
     ActiveConnectionsBatchResponse,
     LogBatchResponse,
     BrowserHistoryBatchResponse,
@@ -309,27 +310,37 @@ def get_network_io_history(node_id: int, limit: int = 60, db: Session = Depends(
 
 # ── Processes ─────────────────────────────────────────────────────────────────
 
-@router.get("/nodes/{node_id}/processes/history", response_model=List[ProcessSnapshotResponse])
-def get_process_history(node_id: int, limit: int = 100, db: Session = Depends(get_db)):
+@router.get("/nodes/{node_id}/processes/history", response_model=ProcessHistoryPageResponse)
+def get_process_history(node_id: int, limit: int = 15, offset: int = 0, db: Session = Depends(get_db)):
     """
-    Returns recently-seen new processes, most recent first. There's no
-    "latest" single-row endpoint here since each collection cycle can
-    report zero-to-many new processes (it's a diff, not a snapshot).
+    Returns recently-seen new processes, most recent first, paginated.
+    There's no "latest" single-row endpoint here since each collection
+    cycle can report zero-to-many new processes (it's a diff, not a
+    snapshot). `total` reflects the full row count for this node so the
+    frontend can render page numbers without a separate count call.
     """
     _get_node_or_404(node_id, db)
-    return (
-        db.query(ProcessSnapshot)
-        .filter(ProcessSnapshot.node_id == node_id)
-        .order_by(desc(ProcessSnapshot.received_at))
+    base_query = db.query(ProcessSnapshot).filter(ProcessSnapshot.node_id == node_id)
+    total = base_query.count()
+    items = (
+        base_query
+        .order_by(desc(ProcessSnapshot.received_at), desc(ProcessSnapshot.id))
+        .offset(offset)
         .limit(limit)
         .all()
     )
+    return ProcessHistoryPageResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 # ── Active connections (batched) ─────────────────────────────────────────────
 
 @router.get("/nodes/{node_id}/active-connections", response_model=ActiveConnectionsBatchResponse)
-def get_latest_active_connections(node_id: int, db: Session = Depends(get_db)):
+def get_latest_active_connections(node_id: int, limit: int = 15, offset: int = 0, db: Session = Depends(get_db)):
+    """
+    Returns a page of connections from the most recent collection batch.
+    `total` is the full connection count in that batch (not just this
+    page), so the frontend can render page numbers.
+    """
     _get_node_or_404(node_id, db)
     latest = (
         db.query(ActiveConnection)
@@ -339,15 +350,18 @@ def get_latest_active_connections(node_id: int, db: Session = Depends(get_db)):
     )
     if not latest:
         raise HTTPException(status_code=404, detail="No connection data received yet")
-    rows = (
-        db.query(ActiveConnection)
-        .filter(ActiveConnection.node_id == node_id, ActiveConnection.batch_id == latest.batch_id)
-        .all()
+    batch_query = db.query(ActiveConnection).filter(
+        ActiveConnection.node_id == node_id, ActiveConnection.batch_id == latest.batch_id
     )
+    total = batch_query.count()
+    rows = batch_query.order_by(ActiveConnection.id).offset(offset).limit(limit).all()
     return ActiveConnectionsBatchResponse(
         batch_id=latest.batch_id,
         received_at=latest.received_at,
         connections=rows,
+        total=total,
+        limit=limit,
+        offset=offset,
     )
 
 

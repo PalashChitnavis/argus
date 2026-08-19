@@ -517,6 +517,19 @@ tbody tr:hover { background: var(--bg-hover); }
   text-align: center;
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 0 2px;
+}
+
+.pagination-status {
+  font-size: 11.5px;
+  font-family: var(--mono);
+}
+
 .json-cell {
   font-family: var(--mono);
   font-size: 11.5px;
@@ -571,20 +584,3 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 
 .tab:hover { color: var(--text); }
-
-/* ---------- Firewall rule cards ---------- */
-
-.firewall-rule-card {
-  margin-bottom: 8px;
-  transition: border-color 0.15s;
-}
-
-.firewall-rule-card:hover {
-  border-color: var(--border-bright);
-}
-
-@keyframes spin-pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
