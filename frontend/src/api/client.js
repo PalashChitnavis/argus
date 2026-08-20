@@ -97,4 +97,12 @@ export const createDeleteRuleCommand = (nodeId, payload) =>
 export const createGetRulesCommand = (nodeId) =>
   request(`/nodes/${nodeId}/commands/get-rules`, { method: 'POST' });
 
+// ---------- Anomalies ----------
+export const runAnomalyScan = (nodeId, hours = 6) =>
+  request(`/nodes/${nodeId}/anomaly-scan?hours=${hours}`, { method: 'POST' });
+export const getAnomalies = (nodeId, includeDismissed = false, limit = 50) =>
+  request(`/nodes/${nodeId}/anomalies?include_dismissed=${includeDismissed}&limit=${limit}`);
+export const dismissAnomaly = (nodeId, anomalyId) =>
+  request(`/nodes/${nodeId}/anomalies/${anomalyId}/dismiss`, { method: 'PATCH' });
+
 export { BASE_URL };

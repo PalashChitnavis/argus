@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: 'overview', label: 'Overview' },
   { to: 'telemetry', label: 'Telemetry' },
   { to: 'firewall', label: 'Firewall' },
+  { to: 'anomalies', label: 'Anomalies' },
 ];
 
 export default function Layout() {

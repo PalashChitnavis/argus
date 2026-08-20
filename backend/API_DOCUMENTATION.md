@@ -174,6 +174,41 @@ or delete a firewall rule immediately, or dump the full current rule state.
 
 ---
 
+## 6. Anomaly Detection — `/nodes/{node_id}/anomaly-scan`, `/anomalies`
+
+Lives in `app/routers/anomaly.py` + `app/services/anomaly_detection.py`. No
+auth (admin frontend only), `404` if `node_id` doesn't exist.
+
+**Approach:** telemetry from every collector (CPU, RAM, disk, network I/O,
+new processes, active connections, browser visits, system logs, auth
+events) is bucketed into 5-minute windows per node, and one feature vector
+is built per window (15 features — see `FEATURE_NAMES` in
+`anomaly_detection.py`; missing signals in a window default to `0.0`).
+`IsolationForest` (`contamination=0.1`, fixed not `"auto"`) is fit fresh on
+the node's own recent windows on every scan call — there's no persisted
+model file, and no cross-node state. This mirrors the project's other ML
+scoping decisions (see project report): the "normal" baseline is always
+that node's own recent behaviour, not a global model.
+
+| Endpoint | Description |
+|---|---|
+| `POST /nodes/{node_id}/anomaly-scan?hours=6` | Refits the model on the last `hours` of telemetry and upserts flagged windows into `anomaly_results`, keyed on `(node_id, window_start)` — re-scanning the same window updates it rather than duplicating it. Returns `{ node_id, scan_range_start, scan_range_end, windows_scanned, anomalies_found, anomalies[], message }`. `message` is set (and `anomalies` empty) if fewer than `MIN_WINDOWS_REQUIRED` (6) windows are available yet. |
+| `GET /nodes/{node_id}/anomalies?include_dismissed=false&limit=50` | List stored results, most recent window first. Dismissed rows excluded by default. |
+| `PATCH /nodes/{node_id}/anomalies/{anomaly_id}/dismiss` | Marks one reviewed (`dismissed: true`, `dismissed_at` set). |
+
+Each stored/returned anomaly includes:
+- `anomaly_score` — IsolationForest's `decision_function` value; more negative = more anomalous.
+- `features` — the raw 15-feature vector for that window.
+- `contributing_features` — the top 3 features by `|z-score|` against the mean/stdev of that same feature across all windows in the scan, so the frontend can show *why* a window was flagged (e.g. `auth_event_count` spiking 4.8 standard deviations above normal).
+
+For testing or demoing without waiting ~30 min for real agent data to
+accumulate 6+ windows, run `python backend/seed_anomaly_demo_data.py <node_id>`
+— it backfills 2 hours of synthetic telemetry with one injected spike
+(CPU pegged, a burst of new processes, and an auth-failure cluster from
+many distinct IPs) so a scan immediately has something to flag.
+
+---
+
 ## Known gaps
 
 - **`GET /nodes/{node_id}/commands`** takes `limit` but not `offset` — it's
@@ -190,3 +225,9 @@ or delete a firewall rule immediately, or dump the full current rule state.
   credential is the API key, which **is** hashed server-side (SHA-256, via
   `hash_api_key()` in `app/core/security.py`) — only the hash is stored, and
   the raw key is shown to the agent exactly once, at registration.
+- **Anomaly detection's `contamination=0.1` is fixed, not adaptive.** On a
+  scan with few windows (e.g. 24), IsolationForest will flag roughly 10% of
+  them regardless of how genuinely anomalous they are — expect 2-3 flagged
+  windows on a quiet demo dataset even without an injected spike. This is a
+  known tradeoff of a fixed contamination rate on small sample sizes, not a
+  bug; a larger telemetry history evens this out.

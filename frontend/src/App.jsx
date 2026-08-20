@@ -4,6 +4,7 @@ import NodesPage from './pages/NodesPage';
 import OverviewPage from './pages/OverviewPage';
 import TelemetryPage from './pages/TelemetryPage';
 import FirewallPage from './pages/FirewallPage';
+import AnomaliesPage from './pages/AnomaliesPage';
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="nodes/:nodeId/overview" element={<OverviewPage />} />
         <Route path="nodes/:nodeId/telemetry" element={<TelemetryPage />} />
         <Route path="nodes/:nodeId/firewall" element={<FirewallPage />} />
+        <Route path="nodes/:nodeId/anomalies" element={<AnomaliesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

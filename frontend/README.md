@@ -1,7 +1,7 @@
 # Argus Frontend
 
-A React (Vite) dashboard for the Argus backend, built around 3 pages per
-node: **Overview**, **Telemetry**, and **Firewall**.
+A React (Vite) dashboard for the Argus backend, built around 4 pages per
+node: **Overview**, **Telemetry**, **Firewall**, and **Anomalies**.
 
 ## Quick start — run the whole thing
 
@@ -45,6 +45,7 @@ If your backend runs somewhere other than `127.0.0.1:8000`, edit
 | Overview | `/nodes/:id/overview` | hero stats (CPU/RAM/disk/security), system identity, network snapshot, most-visited sites |
 | Telemetry | `/nodes/:id/telemetry` | every data type the agent collects, formatted for reading, each with its own "Refresh now" button |
 | Firewall | `/nodes/:id/firewall` | rules in plain English ("Block incoming traffic on port 80"), create/edit/delete, status panel explaining enabled vs applied |
+| Anomalies | `/nodes/:id/anomalies` | "Scan now" fits an IsolationForest on the node's last 6h of telemetry (bucketed into 5-min windows) and lists flagged windows as alert cards, each showing the top contributing features (e.g. "↑ Auth log lines: 30") and a dismiss action |
 
 ### How "Refresh now" works
 
@@ -79,6 +80,7 @@ argus-frontend/
       useRefreshCommand.js        — queues a refresh command, polls for its result
     lib/
       firewallText.js             — turns rule_type/action/params into plain English
+      anomalyText.js               — feature_name → human label, z-score direction/display formatting
     components/
       Layout.jsx                  — sidebar (node picker + nav) + page outlet
       StatusPill.jsx               — online/offline badge
@@ -91,6 +93,7 @@ argus-frontend/
       OverviewPage.jsx             — /nodes/:nodeId/overview
       TelemetryPage.jsx            — /nodes/:nodeId/telemetry
       FirewallPage.jsx             — /nodes/:nodeId/firewall
+      AnomaliesPage.jsx            — /nodes/:nodeId/anomalies
 ```
 
 ## Building for production
@@ -101,11 +104,3 @@ npm run build
 
 Output goes to `dist/`. Set `VITE_API_BASE_URL` to your real backend URL
 first if it's not `127.0.0.1:8000`.
-
-## Backend changes required
-
-See `BACKEND_CHANGES.md` (one level up) for the full list — short version:
-your `FirewallRule` model was out of sync with its own schema (every
-firewall endpoint would have crashed), and there was no read API at all for
-nodes or any telemetry data, which is almost certainly why your 5-minute
-data call hung. Both are fixed in `argus-backend-patched/`.

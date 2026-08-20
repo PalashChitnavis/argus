@@ -20,3 +20,4 @@ from app.models.installed_package import InstalledPackage
 from app.models.os_info import OsInfo
 from app.models.hardware_info import HardwareInfo
 from app.models.firewall_rule import FirewallHistory
+from app.models.anomaly_result import AnomalyResult

@@ -515,3 +515,32 @@ curl -s -X POST http://127.0.0.1:8000/nodes/1/commands/COMMAND-UUID-HERE/result 
   }' | python3 -m json.tool
 
 ```
+
+---
+
+## 8. Anomaly Detection — `/nodes/{node_id}/anomaly-scan`, `/anomalies`
+> **Note:** No authentication — called by the frontend. Telemetry is bucketed into 5-minute windows and a fresh IsolationForest is fit on the node's own recent windows every scan (no persisted model file). Needs at least 6 windows (~30 min of real agent data) to run — fewer than that returns a `message` instead of results. See `backend/seed_anomaly_demo_data.py` to backfill synthetic data for testing/demo without waiting.
+
+### POST /nodes/{node_id}/anomaly-scan
+* **Description:** Refits the model on the last `hours` of telemetry (default 6) and upserts any flagged windows into `anomaly_results`, keyed on `(node_id, window_start)` — re-running a scan over the same window updates it rather than duplicating it.
+```bash
+curl -s -X POST "http://127.0.0.1:8000/nodes/1/anomaly-scan?hours=6" | python3 -m json.tool
+
+```
+
+### GET /nodes/{node_id}/anomalies
+* **Description:** List stored anomaly results, most recent window first. Dismissed results are excluded unless `include_dismissed=true`.
+```bash
+curl -s "http://127.0.0.1:8000/nodes/1/anomalies?limit=50" | python3 -m json.tool
+
+# include dismissed
+curl -s "http://127.0.0.1:8000/nodes/1/anomalies?include_dismissed=true" | python3 -m json.tool
+
+```
+
+### PATCH /nodes/{node_id}/anomalies/{anomaly_id}/dismiss
+* **Description:** Marks an anomaly reviewed. `404` if it doesn't belong to this node.
+```bash
+curl -s -X PATCH http://127.0.0.1:8000/nodes/1/anomalies/1/dismiss | python3 -m json.tool
+
+```

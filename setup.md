@@ -30,6 +30,16 @@ Create the tables (safe to re-run):
 python init_db.py
 ```
 
+**For anomaly detection testing/demo:** the scan needs at least 6 five-minute
+telemetry windows (~30 min of real agent runtime) before it can find
+anything. To test immediately instead of waiting, backfill synthetic
+telemetry with an injected spike:
+```bash
+python seed_anomaly_demo_data.py <node_id>
+```
+(Needs a node to already exist — register one via the agent first, or check
+`GET /nodes` for an id.)
+
 Generate an enrollment token — the agent needs this to register:
 ```bash
 python generate_token.py
@@ -114,6 +124,14 @@ curl -s http://127.0.0.1:8000/nodes | python3 -m json.tool
 Should list your registered node with `"status": "online"` (agent's
 `last_seen` updates every 10s via its command-poll heartbeat, so it flips to
 `offline` if the agent isn't running).
+
+Anomaly detection sanity check (after seeding data or letting real telemetry
+accumulate for ~30 min):
+```bash
+curl -s -X POST "http://127.0.0.1:8000/nodes/1/anomaly-scan?hours=6" | python3 -m json.tool
+```
+Should return `anomalies_found` and a list, or a `message` saying not enough
+data yet.
 
 For a full endpoint-by-endpoint reference with example curl calls, see
 `API_REFERENCE.md` at the repo root.
