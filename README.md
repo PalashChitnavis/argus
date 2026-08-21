@@ -1,14 +1,11 @@
 # Argus
 
-**A centralized endpoint monitoring and management system for Linux fleets.**
+**A centralized context-aware firewall monitoring and management system for Linux fleets.**
 
 Argus lets you enroll Linux machines, watch their live telemetry (CPU, RAM,
 disk, network, processes, browser history, security posture), push firewall
 rules to them, run remote commands, and catch anomalous network behavior —
 all from a single web dashboard.
-
-Built as a Major Project / Colloquium submission at **ABV-IIITM Gwalior**
-(Information Technology), under the supervision of **Prof. Aditya Trivedi**.
 
 ![Dashboard](assets/dashboard.png)
 
